@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   TrendingUp, TrendingDown, Wallet, Lock, LogOut, Plus, Calendar, BarChart3, FileText, Trash2, Eye, EyeOff, Sparkles, Download, Wifi, WifiOff, CalendarDays, ChevronLeft, ChevronRight, Upload, Image as ImageIcon, Loader2, X, ArrowDownCircle, ArrowUpCircle,
   UtensilsCrossed, Car, Lightbulb, ShoppingBag, Film, MoreHorizontal, Home, Repeat, AlertCircle, Pencil, CheckCircle2,
+  Heart, Baby, PawPrint, Plane, Gift, Briefcase, GraduationCap, Dumbbell, Scissors, Wrench, Fuel, Coffee, Cigarette, Beer, Pill, Smartphone, Receipt, ChevronDown, ChevronUp, Tag,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, Cell, PieChart, Pie } from "recharts";
 import { collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "firebase/firestore";
@@ -14,17 +15,92 @@ const CURRENCY_CODE = "THB";
 const CONFIG_DOC = doc(db, "config", "main");
 const TX_COL = collection(db, "transactions");
 const SUBS_COL = collection(db, "subscriptions");
+const CAT_COL = collection(db, "categories");
 
-// ---------- CATEGORIES ----------
-const CATEGORIES = {
-  food: { label: "Food & Drink", icon: UtensilsCrossed, color: "#f97316" }, // orange
-  transport: { label: "Transport", icon: Car, color: "#06b6d4" }, // cyan
-  utilities: { label: "Utilities", icon: Lightbulb, color: "#eab308" }, // yellow
-  shopping: { label: "Shopping", icon: ShoppingBag, color: "#ec4899" }, // pink
-  entertainment: { label: "Entertainment", icon: Film, color: "#8b5cf6" }, // violet
-  other: { label: "Other", icon: MoreHorizontal, color: "#71717a" }, // zinc
+// ---------- ICON LIBRARY (curated) ----------
+// We expose a curated subset of lucide-react icons for the category picker.
+// Adding more is easy — just import + add to ICON_OPTIONS.
+const ICON_OPTIONS = {
+  utensils: { Cmp: null, label: "Food" },
+  car: { Cmp: null, label: "Car" },
+  lightbulb: { Cmp: null, label: "Utilities" },
+  shoppingbag: { Cmp: null, label: "Shopping" },
+  film: { Cmp: null, label: "Movies" },
+  more: { Cmp: null, label: "Other" },
+  home: { Cmp: null, label: "Home" },
+  heart: { Cmp: null, label: "Health" },
+  baby: { Cmp: null, label: "Kids" },
+  pawprint: { Cmp: null, label: "Pets" },
+  plane: { Cmp: null, label: "Travel" },
+  gift: { Cmp: null, label: "Gifts" },
+  briefcase: { Cmp: null, label: "Work" },
+  graduationcap: { Cmp: null, label: "Education" },
+  dumbbell: { Cmp: null, label: "Fitness" },
+  scissors: { Cmp: null, label: "Personal Care" },
+  wrench: { Cmp: null, label: "Repair" },
+  fuel: { Cmp: null, label: "Fuel" },
+  coffee: { Cmp: null, label: "Coffee" },
+  cigarette: { Cmp: null, label: "Vices" },
+  beer: { Cmp: null, label: "Drinks" },
+  pill: { Cmp: null, label: "Medical" },
+  smartphone: { Cmp: null, label: "Tech" },
+  receipt: { Cmp: null, label: "Bills" },
 };
-const CATEGORY_KEYS = Object.keys(CATEGORIES);
+
+const COLOR_OPTIONS = [
+  "#f97316", "#06b6d4", "#eab308", "#ec4899", "#8b5cf6", "#71717a",
+  "#10b981", "#f43f5e", "#0ea5e9", "#a855f7", "#84cc16", "#f59e0b",
+];
+
+// ---------- DEFAULT CATEGORIES (seeded on first run) ----------
+const DEFAULT_CATEGORIES = [
+  { id: "food", label: "Food & Drink", icon: "utensils", color: "#f97316", order: 0, isDefault: true },
+  { id: "transport", label: "Transport", icon: "car", color: "#06b6d4", order: 1, isDefault: true },
+  { id: "utilities", label: "Utilities", icon: "lightbulb", color: "#eab308", order: 2, isDefault: true },
+  { id: "shopping", label: "Shopping", icon: "shoppingbag", color: "#ec4899", order: 3, isDefault: true },
+  { id: "entertainment", label: "Entertainment", icon: "film", color: "#8b5cf6", order: 4, isDefault: true },
+  { id: "other", label: "Other", icon: "more", color: "#71717a", order: 5, isDefault: true },
+];
+
+// Wire up icon components into ICON_OPTIONS
+ICON_OPTIONS.utensils.Cmp = UtensilsCrossed;
+ICON_OPTIONS.car.Cmp = Car;
+ICON_OPTIONS.lightbulb.Cmp = Lightbulb;
+ICON_OPTIONS.shoppingbag.Cmp = ShoppingBag;
+ICON_OPTIONS.film.Cmp = Film;
+ICON_OPTIONS.more.Cmp = MoreHorizontal;
+ICON_OPTIONS.home.Cmp = Home;
+ICON_OPTIONS.heart.Cmp = Heart;
+ICON_OPTIONS.baby.Cmp = Baby;
+ICON_OPTIONS.pawprint.Cmp = PawPrint;
+ICON_OPTIONS.plane.Cmp = Plane;
+ICON_OPTIONS.gift.Cmp = Gift;
+ICON_OPTIONS.briefcase.Cmp = Briefcase;
+ICON_OPTIONS.graduationcap.Cmp = GraduationCap;
+ICON_OPTIONS.dumbbell.Cmp = Dumbbell;
+ICON_OPTIONS.scissors.Cmp = Scissors;
+ICON_OPTIONS.wrench.Cmp = Wrench;
+ICON_OPTIONS.fuel.Cmp = Fuel;
+ICON_OPTIONS.coffee.Cmp = Coffee;
+ICON_OPTIONS.cigarette.Cmp = Cigarette;
+ICON_OPTIONS.beer.Cmp = Beer;
+ICON_OPTIONS.pill.Cmp = Pill;
+ICON_OPTIONS.smartphone.Cmp = Smartphone;
+ICON_OPTIONS.receipt.Cmp = Receipt;
+
+// Look up a category by id from the live list, with sensible fallbacks for legacy data
+function getCategoryConfig(categories, id) {
+  const found = categories.find((c) => c.id === id);
+  if (found) return found;
+  // Fallback to "other" or a synthetic placeholder for orphaned IDs
+  const other = categories.find((c) => c.id === "other");
+  if (other) return other;
+  return { id: "unknown", label: "Other", icon: "more", color: "#71717a" };
+}
+
+function getCategoryIcon(iconKey) {
+  return ICON_OPTIONS[iconKey]?.Cmp || MoreHorizontal;
+}
 
 // ---------- HELPERS ----------
 const fmt = (n) => {
@@ -156,7 +232,7 @@ function PasscodeScreen({ onUnlock }) {
 }
 
 // ---------- ENTRY FORM ----------
-function EntryForm({ onSave, dayMap }) {
+function EntryForm({ onSave, dayMap, categories }) {
   const [date, setDate] = useState(today());
   const [kind, setKind] = useState("expense"); // expense by default for personal use
   const [category, setCategory] = useState("food");
@@ -165,6 +241,13 @@ function EntryForm({ onSave, dayMap }) {
   const [partner, setPartner] = useState(localStorage.getItem("household:partner") || "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // If "food" doesn't exist in user's categories (rare edge case), default to first
+  useEffect(() => {
+    if (categories.length > 0 && !categories.find(c => c.id === category)) {
+      setCategory(categories[0].id);
+    }
+  }, [categories, category]);
 
   const day = dayMap[date];
   const amt = parseFloat(amount) || 0;
@@ -255,19 +338,18 @@ function EntryForm({ onSave, dayMap }) {
           <div>
             <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">Category</label>
             <div className="grid grid-cols-3 gap-2">
-              {CATEGORY_KEYS.map((k) => {
-                const cfg = CATEGORIES[k];
-                const Icon = cfg.icon;
-                const selected = category === k;
+              {categories.map((cat) => {
+                const Icon = getCategoryIcon(cat.icon);
+                const selected = category === cat.id;
                 return (
                   <button
-                    key={k}
-                    onClick={() => setCategory(k)}
+                    key={cat.id}
+                    onClick={() => setCategory(cat.id)}
                     className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-lg border-2 text-xs font-medium transition ${selected ? "" : "border-zinc-800 text-zinc-500"}`}
-                    style={selected ? { borderColor: cfg.color, background: cfg.color + "1a", color: cfg.color } : {}}
+                    style={selected ? { borderColor: cat.color, background: cat.color + "1a", color: cat.color } : {}}
                   >
                     <Icon className="w-4 h-4" />
-                    {cfg.label}
+                    {cat.label}
                   </button>
                 );
               })}
@@ -337,7 +419,7 @@ function EntryForm({ onSave, dayMap }) {
 }
 
 // ---------- SLIP UPLOAD ----------
-function SlipUpload({ onSave }) {
+function SlipUpload({ onSave, categories }) {
   const [date, setDate] = useState(today());
   const [kind, setKind] = useState(null); // "income" or "expense"
   const [category, setCategory] = useState("food");
@@ -347,6 +429,13 @@ function SlipUpload({ onSave }) {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+
+  // Default to first category if "food" doesn't exist
+  useEffect(() => {
+    if (categories.length > 0 && !categories.find(c => c.id === category)) {
+      setCategory(categories[0].id);
+    }
+  }, [categories, category]);
 
   const parseAmount = (text) => {
     const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -532,19 +621,18 @@ function SlipUpload({ onSave }) {
             <div className="mb-4">
               <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">Category for these slips</label>
               <div className="grid grid-cols-3 gap-2">
-                {CATEGORY_KEYS.map((k) => {
-                  const cfg = CATEGORIES[k];
-                  const Icon = cfg.icon;
-                  const selected = category === k;
+                {categories.map((cat) => {
+                  const Icon = getCategoryIcon(cat.icon);
+                  const selected = category === cat.id;
                   return (
                     <button
-                      key={k}
-                      onClick={() => setCategory(k)}
+                      key={cat.id}
+                      onClick={() => setCategory(cat.id)}
                       className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-lg border-2 text-xs font-medium transition ${selected ? "" : "border-zinc-800 text-zinc-500"}`}
-                      style={selected ? { borderColor: cfg.color, background: cfg.color + "1a", color: cfg.color } : {}}
+                      style={selected ? { borderColor: cat.color, background: cat.color + "1a", color: cat.color } : {}}
                     >
                       <Icon className="w-4 h-4" />
-                      {cfg.label}
+                      {cat.label}
                     </button>
                   );
                 })}
@@ -611,7 +699,7 @@ function SlipUpload({ onSave }) {
                     </span>
                   </div>
                   {isExpense && (
-                    <div className="text-xs text-zinc-500 mt-1">All as: {CATEGORIES[category].label}</div>
+                    <div className="text-xs text-zinc-500 mt-1">All as: {getCategoryConfig(categories, category).label}</div>
                   )}
                 </div>
               )}
@@ -661,7 +749,7 @@ function KpiCard({ label, value, sub, accent, icon }) {
 }
 
 // ---------- DASHBOARD ----------
-function Dashboard({ entries, transactions, subscriptions = [] }) {
+function Dashboard({ entries, transactions, subscriptions = [], categories }) {
   const stats = useMemo(() => {
     const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
     const totalIncome = entries.reduce((s, e) => s + e.income, 0);
@@ -689,12 +777,12 @@ function Dashboard({ entries, transactions, subscriptions = [] }) {
         catTotals[t.category] = (catTotals[t.category] || 0) + t.amount;
       }
     });
-    const pieData = CATEGORY_KEYS
-      .map(k => ({ name: CATEGORIES[k].label, value: catTotals[k] || 0, color: CATEGORIES[k].color, key: k }))
+    const pieData = categories
+      .map(c => ({ name: c.label, value: catTotals[c.id] || 0, color: c.color, key: c.id }))
       .filter(d => d.value > 0);
 
     return { totalIncome, totalExpenses, totalProfit, sum7, chartData, last30Data: chartData.slice(-30), pieData, subMonthly, activeSubsCount };
-  }, [entries, transactions]);
+  }, [entries, transactions, categories, subscriptions]);
 
   if (entries.length === 0) {
     return (
@@ -807,7 +895,7 @@ function Dashboard({ entries, transactions, subscriptions = [] }) {
 }
 
 // ---------- HISTORY ----------
-function History({ entries, onDeleteTransaction }) {
+function History({ entries, onDeleteTransaction, categories }) {
   const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
   const [expanded, setExpanded] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
@@ -856,8 +944,8 @@ function History({ entries, onDeleteTransaction }) {
               {isOpen && (
                 <div className="bg-black/30 px-4 md:px-6 py-3 border-t border-zinc-800 space-y-2">
                   {day.transactions.map((tx) => {
-                    const cfg = tx.kind === "expense" ? CATEGORIES[tx.category] : null;
-                    const Icon = cfg ? cfg.icon : ArrowDownCircle;
+                    const cfg = tx.kind === "expense" ? getCategoryConfig(categories, tx.category) : null;
+                    const Icon = cfg ? getCategoryIcon(cfg.icon) : ArrowDownCircle;
                     const color = cfg ? cfg.color : "#10b981";
                     return (
                       <div key={tx.id} className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
@@ -907,7 +995,7 @@ function History({ entries, onDeleteTransaction }) {
 }
 
 // ---------- MONTHLY ----------
-function Monthly({ entries, transactions }) {
+function Monthly({ entries, transactions, categories }) {
   const months = useMemo(() => {
     const map = {};
     entries.forEach(e => {
@@ -949,8 +1037,8 @@ function Monthly({ entries, transactions }) {
   monthTxs.forEach(t => {
     if (t.kind === "expense") catTotals[t.category] = (catTotals[t.category] || 0) + t.amount;
   });
-  const monthPie = CATEGORY_KEYS
-    .map(k => ({ name: CATEGORIES[k].label, value: catTotals[k] || 0, color: CATEGORIES[k].color, key: k }))
+  const monthPie = categories
+    .map(c => ({ name: c.label, value: catTotals[c.id] || 0, color: c.color, key: c.id }))
     .filter(d => d.value > 0);
 
   const dailyData = [...selectedMonth.days].sort((a, b) => a.date.localeCompare(b.date)).map(e => ({ date: e.date.slice(8), profit: e.profit }));
@@ -1036,7 +1124,7 @@ function Monthly({ entries, transactions }) {
 }
 
 // ---------- SUBSCRIPTIONS ----------
-function Subscriptions({ subscriptions, onSave, onDelete, onMarkUnsubscribed, onReactivate }) {
+function Subscriptions({ subscriptions, onSave, onDelete, onMarkUnsubscribed, onReactivate, categories }) {
   const [editing, setEditing] = useState(null); // sub object being edited, or "new"
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState(null);
@@ -1150,7 +1238,7 @@ function Subscriptions({ subscriptions, onSave, onDelete, onMarkUnsubscribed, on
         ...parsed,
         amount: parsed.amount || "",
         nextRenewal: parsed.nextRenewal || today(),
-        category: "entertainment",
+        category: categories.find(c => c.id === "entertainment")?.id || categories[0]?.id || "other",
         rawText: data.text,
       });
       setEditing("scanned");
@@ -1164,6 +1252,7 @@ function Subscriptions({ subscriptions, onSave, onDelete, onMarkUnsubscribed, on
     return (
       <SubForm
         initial={editing === "scanned" ? scanResult : null}
+        categories={categories}
         onSave={async (sub) => { await onSave(sub); setEditing(null); setScanResult(null); }}
         onCancel={() => { setEditing(null); setScanResult(null); }}
       />
@@ -1175,6 +1264,7 @@ function Subscriptions({ subscriptions, onSave, onDelete, onMarkUnsubscribed, on
       <SubForm
         initial={editing}
         existingId={editing.id}
+        categories={categories}
         onSave={async (sub) => { await onSave({ ...sub, id: editing.id }); setEditing(null); }}
         onCancel={() => setEditing(null)}
       />
@@ -1255,8 +1345,8 @@ function Subscriptions({ subscriptions, onSave, onDelete, onMarkUnsubscribed, on
           </div>
           <div className="divide-y divide-zinc-800">
             {sorted.map(s => {
-              const cfg = CATEGORIES[s.category] || CATEGORIES.other;
-              const Icon = cfg.icon;
+              const cfg = getCategoryConfig(categories, s.category);
+              const Icon = getCategoryIcon(cfg.icon);
               const isActive = s.status === "active";
               const monthlyEquiv = s.cycle === "yearly" ? s.amount / 12 : s.amount;
               return (
@@ -1319,11 +1409,16 @@ function Subscriptions({ subscriptions, onSave, onDelete, onMarkUnsubscribed, on
 }
 
 // ---------- SUBSCRIPTION FORM ----------
-function SubForm({ initial, onSave, onCancel, existingId }) {
+function SubForm({ initial, onSave, onCancel, existingId, categories }) {
   const [name, setName] = useState(initial?.name || "");
   const [amount, setAmount] = useState(initial?.amount || "");
   const [cycle, setCycle] = useState(initial?.cycle || "monthly");
-  const [category, setCategory] = useState(initial?.category || "entertainment");
+  const [category, setCategory] = useState(
+    initial?.category ||
+    categories.find(c => c.id === "entertainment")?.id ||
+    categories[0]?.id ||
+    "other"
+  );
   const [nextRenewal, setNextRenewal] = useState(initial?.nextRenewal || today());
   const [notes, setNotes] = useState(initial?.notes || "");
   const [saving, setSaving] = useState(false);
@@ -1402,19 +1497,18 @@ function SubForm({ initial, onSave, onCancel, existingId }) {
         <div>
           <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">Category</label>
           <div className="grid grid-cols-3 gap-2">
-            {CATEGORY_KEYS.map(k => {
-              const cfg = CATEGORIES[k];
-              const Icon = cfg.icon;
-              const sel = category === k;
+            {categories.map(cat => {
+              const Icon = getCategoryIcon(cat.icon);
+              const sel = category === cat.id;
               return (
                 <button
-                  key={k}
-                  onClick={() => setCategory(k)}
+                  key={cat.id}
+                  onClick={() => setCategory(cat.id)}
                   className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-lg border-2 text-xs font-medium transition ${sel ? "" : "border-zinc-800 text-zinc-500"}`}
-                  style={sel ? { borderColor: cfg.color, background: cfg.color + "1a", color: cfg.color } : {}}
+                  style={sel ? { borderColor: cat.color, background: cat.color + "1a", color: cat.color } : {}}
                 >
                   <Icon className="w-4 h-4" />
-                  {cfg.label}
+                  {cat.label}
                 </button>
               );
             })}
@@ -1463,8 +1557,230 @@ function SubForm({ initial, onSave, onCancel, existingId }) {
   );
 }
 
+// ---------- CATEGORY MANAGER ----------
+function CategoryManager({ categories, onSave, onDelete, onReorder, transactions, subscriptions }) {
+  const [editing, setEditing] = useState(null); // category being edited, "new", or null
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const handleSave = async (cat) => {
+    await onSave(cat);
+    setEditing(null);
+  };
+
+  const handleDelete = async (cat) => {
+    // Count usage
+    const txCount = transactions.filter(t => t.category === cat.id).length;
+    const subCount = subscriptions.filter(s => s.category === cat.id).length;
+    const total = txCount + subCount;
+    if (total > 0) {
+      const ok = confirm(
+        `"${cat.label}" is used by ${txCount} transaction${txCount !== 1 ? "s" : ""}` +
+        (subCount > 0 ? ` and ${subCount} subscription${subCount !== 1 ? "s" : ""}` : "") +
+        `.\n\nDeleting will reassign them to "Other". Continue?`
+      );
+      if (!ok) return;
+    } else {
+      if (!confirm(`Delete "${cat.label}"?`)) return;
+    }
+    await onDelete(cat.id);
+    setConfirmDelete(null);
+  };
+
+  if (editing) {
+    return (
+      <CategoryEditForm
+        initial={editing === "new" ? null : editing}
+        existing={categories}
+        onSave={handleSave}
+        onCancel={() => setEditing(null)}
+      />
+    );
+  }
+
+  const move = (idx, dir) => {
+    const target = idx + dir;
+    if (target < 0 || target >= categories.length) return;
+    onReorder(idx, target);
+  };
+
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 md:p-8">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-xl font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>Categories</h3>
+          <p className="text-xs text-zinc-500">Add, edit, reorder, or remove expense categories.</p>
+        </div>
+        <button
+          onClick={() => setEditing("new")}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-black"
+          style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)" }}
+        >
+          <Plus className="w-4 h-4" /> Add
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {categories.map((cat, idx) => {
+          const Icon = getCategoryIcon(cat.icon);
+          const txCount = transactions.filter(t => t.category === cat.id).length;
+          return (
+            <div key={cat.id} className="flex items-center gap-2 p-3 rounded-lg bg-black/40 border border-zinc-800">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: cat.color + "20", color: cat.color }}>
+                <Icon className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-medium text-sm">{cat.label}</div>
+                <div className="text-xs text-zinc-500">{txCount} transaction{txCount !== 1 ? "s" : ""}</div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button onClick={() => move(idx, -1)} disabled={idx === 0} className="p-1.5 text-zinc-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+                <button onClick={() => move(idx, 1)} disabled={idx === categories.length - 1} className="p-1.5 text-zinc-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                <button onClick={() => setEditing(cat)} className="p-1.5 text-zinc-500 hover:text-violet-400">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                {cat.id !== "other" && (
+                  <button onClick={() => handleDelete(cat)} className="p-1.5 text-zinc-500 hover:text-rose-400">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-zinc-600 mt-4 leading-relaxed">
+        Note: "Other" can't be deleted — it's the fallback when categories are removed.
+      </p>
+    </div>
+  );
+}
+
+function CategoryEditForm({ initial, existing, onSave, onCancel }) {
+  const [label, setLabel] = useState(initial?.label || "");
+  const [icon, setIcon] = useState(initial?.icon || "more");
+  const [color, setColor] = useState(initial?.color || COLOR_OPTIONS[0]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const handleSubmit = async () => {
+    setErr("");
+    const trimmed = label.trim();
+    if (!trimmed) { setErr("Name is required"); return; }
+    if (trimmed.length > 30) { setErr("Name too long (max 30 characters)"); return; }
+    // Check duplicate label (case-insensitive), excluding self
+    const dup = existing.find(c => c.label.toLowerCase() === trimmed.toLowerCase() && c.id !== initial?.id);
+    if (dup) { setErr("A category with that name already exists"); return; }
+
+    setSaving(true);
+    const cat = {
+      id: initial?.id || `cat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      label: trimmed,
+      icon,
+      color,
+      order: initial?.order ?? existing.length,
+      isDefault: initial?.isDefault || false,
+      createdAt: initial?.createdAt || new Date().toISOString(),
+    };
+    try {
+      await onSave(cat);
+    } catch (e) {
+      setErr("Save failed: " + e.message);
+    }
+    setSaving(false);
+  };
+
+  const PreviewIcon = getCategoryIcon(icon);
+
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 md:p-8">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: color + "20", color }}>
+            <PreviewIcon className="w-5 h-5" />
+          </div>
+          <h2 className="text-xl font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>
+            {initial ? "Edit Category" : "New Category"}
+          </h2>
+        </div>
+        <button onClick={onCancel} className="text-zinc-500 hover:text-white">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">Name</label>
+          <input
+            type="text"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Rent, Healthcare, etc."
+            maxLength={30}
+            className="w-full bg-black/40 border border-zinc-800 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-400/60"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">Icon</label>
+          <div className="grid grid-cols-6 gap-2 max-h-64 overflow-y-auto p-1">
+            {Object.entries(ICON_OPTIONS).map(([key, opt]) => {
+              const Cmp = opt.Cmp;
+              const sel = icon === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setIcon(key)}
+                  title={opt.label}
+                  className={`aspect-square flex items-center justify-center rounded-lg border-2 transition ${sel ? "" : "border-zinc-800 text-zinc-500 hover:text-white"}`}
+                  style={sel ? { borderColor: color, background: color + "1a", color } : {}}
+                >
+                  <Cmp className="w-4 h-4" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">Color</label>
+          <div className="grid grid-cols-6 gap-2">
+            {COLOR_OPTIONS.map(c => (
+              <button
+                key={c}
+                onClick={() => setColor(c)}
+                className={`aspect-square rounded-lg border-2 transition ${color === c ? "border-white" : "border-transparent"}`}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {err && <p className="text-rose-400 text-sm">{err}</p>}
+
+        <button
+          onClick={handleSubmit}
+          disabled={saving || !label.trim()}
+          className="w-full py-4 rounded-xl font-semibold text-black transition-all hover:opacity-90 disabled:opacity-40"
+          style={{ background: saving ? "#8b5cf6" : "linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)" }}
+        >
+          {saving ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Saving…
+            </span>
+          ) : initial ? "Save Changes" : "Add Category"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---------- SETTINGS ----------
-function Settings({ entries }) {
+function Settings({ entries, categories, transactions, subscriptions, onSaveCategory, onDeleteCategory, onReorderCategories }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -1524,6 +1840,17 @@ function Settings({ entries }) {
           <Download className="w-4 h-4" /> Export CSV
         </button>
       </div>
+
+      <div className="max-w-xl">
+        <CategoryManager
+          categories={categories}
+          transactions={transactions}
+          subscriptions={subscriptions}
+          onSave={onSaveCategory}
+          onDelete={onDeleteCategory}
+          onReorder={onReorderCategories}
+        />
+      </div>
     </div>
   );
 }
@@ -1533,6 +1860,8 @@ export default function App() {
   const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("household:unlocked") === "1");
   const [transactions, setTransactions] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [categoriesSeeded, setCategoriesSeeded] = useState(false);
   const [tab, setTab] = useState("entry");
   const [online, setOnline] = useState(navigator.onLine);
   const [loading, setLoading] = useState(true);
@@ -1552,8 +1881,8 @@ export default function App() {
   useEffect(() => {
     if (!unlocked) return;
     setLoading(true);
-    let txReady = false, subsReady = false;
-    const checkDone = () => { if (txReady && subsReady) setLoading(false); };
+    let txReady = false, subsReady = false, catsReady = false;
+    const checkDone = () => { if (txReady && subsReady && catsReady) setLoading(false); };
 
     const unsub1 = onSnapshot(TX_COL,
       (snap) => {
@@ -1573,8 +1902,36 @@ export default function App() {
       },
       (err) => { console.error(err); subsReady = true; checkDone(); }
     );
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = onSnapshot(CAT_COL,
+      (snap) => {
+        const list = [];
+        snap.forEach(d => list.push(d.data()));
+        // Sort by order
+        list.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+        setCategories(list);
+        catsReady = true; checkDone();
+      },
+      (err) => { console.error(err); catsReady = true; checkDone(); }
+    );
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [unlocked]);
+
+  // Seed default categories on first run if none exist yet
+  useEffect(() => {
+    if (!unlocked || loading || categoriesSeeded) return;
+    if (categories.length > 0) { setCategoriesSeeded(true); return; }
+    const seed = async () => {
+      try {
+        for (const cat of DEFAULT_CATEGORIES) {
+          await setDoc(doc(db, "categories", cat.id), cat);
+        }
+        setCategoriesSeeded(true);
+      } catch (e) {
+        console.error("Seed failed:", e);
+      }
+    };
+    seed();
+  }, [unlocked, loading, categories, categoriesSeeded]);
 
   const saveTransaction = async (tx) => {
     await setDoc(doc(db, "transactions", tx.id), tx);
@@ -1603,6 +1960,39 @@ export default function App() {
       nextRenewal = advanceDate(nextRenewal, sub.cycle);
     }
     await setDoc(doc(db, "subscriptions", id), { ...sub, status: "active", nextRenewal });
+  };
+
+  // ---------- CATEGORY HANDLERS ----------
+  const saveCategory = async (cat) => {
+    await setDoc(doc(db, "categories", cat.id), cat);
+  };
+
+  const deleteCategory = async (id) => {
+    if (id === "other") return; // safety: never delete "other"
+    // Reassign any transactions/subs using this category to "other"
+    const affectedTxs = transactions.filter(t => t.category === id);
+    const affectedSubs = subscriptions.filter(s => s.category === id);
+    for (const t of affectedTxs) {
+      await setDoc(doc(db, "transactions", t.id), { ...t, category: "other" });
+    }
+    for (const s of affectedSubs) {
+      await setDoc(doc(db, "subscriptions", s.id), { ...s, category: "other" });
+    }
+    await deleteDoc(doc(db, "categories", id));
+  };
+
+  const reorderCategories = async (fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    const list = [...categories];
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+    // Reassign order values to all
+    for (let i = 0; i < list.length; i++) {
+      const cat = list[i];
+      if (cat.order !== i) {
+        await setDoc(doc(db, "categories", cat.id), { ...cat, order: i });
+      }
+    }
   };
 
   // ---------- AUTO-CREATE EXPENSES FROM DUE SUBSCRIPTIONS ----------
@@ -1723,19 +2113,28 @@ export default function App() {
           <div className="text-center py-20 text-zinc-500">Connecting…</div>
         ) : (
           <>
-            {tab === "entry" && <EntryForm onSave={saveTransaction} dayMap={dayMap} />}
-            {tab === "upload" && <SlipUpload onSave={saveTransaction} />}
+            {tab === "entry" && <EntryForm onSave={saveTransaction} dayMap={dayMap} categories={categories} />}
+            {tab === "upload" && <SlipUpload onSave={saveTransaction} categories={categories} />}
             {tab === "subs" && <Subscriptions
               subscriptions={subscriptions}
+              categories={categories}
               onSave={saveSubscription}
               onDelete={deleteSubscription}
               onMarkUnsubscribed={markUnsubscribed}
               onReactivate={reactivateSubscription}
             />}
-            {tab === "dashboard" && <Dashboard entries={entries} transactions={transactions} subscriptions={subscriptions} />}
-            {tab === "monthly" && <Monthly entries={entries} transactions={transactions} />}
-            {tab === "history" && <History entries={entries} onDeleteTransaction={deleteTransaction} />}
-            {tab === "settings" && <Settings entries={entries} />}
+            {tab === "dashboard" && <Dashboard entries={entries} transactions={transactions} subscriptions={subscriptions} categories={categories} />}
+            {tab === "monthly" && <Monthly entries={entries} transactions={transactions} categories={categories} />}
+            {tab === "history" && <History entries={entries} onDeleteTransaction={deleteTransaction} categories={categories} />}
+            {tab === "settings" && <Settings
+              entries={entries}
+              categories={categories}
+              transactions={transactions}
+              subscriptions={subscriptions}
+              onSaveCategory={saveCategory}
+              onDeleteCategory={deleteCategory}
+              onReorderCategories={reorderCategories}
+            />}
           </>
         )}
         <footer className="mt-12 text-center text-xs text-zinc-600">
