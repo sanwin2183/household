@@ -120,6 +120,25 @@ const fmtCompact = (n) => {
 const today = () => new Date().toISOString().slice(0, 10);
 
 // Advance an ISO date string by one billing cycle. Handles month overflow correctly.
+// Format an ISO date string in Gregorian English. iOS Safari sometimes renders
+// date pickers in Buddhist year (BE) when device locale is Thai. We display
+// this below the picker so users always see the real Gregorian date.
+function formatDateLabel(isoDate) {
+  if (!isoDate) return "";
+  try {
+    const d = new Date(isoDate + "T00:00:00");
+    return d.toLocaleDateString("en-US", {
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      calendar: "gregory",
+    });
+  } catch {
+    return isoDate;
+  }
+}
+
 function advanceDate(isoDate, cycle) {
   const d = new Date(isoDate + "T00:00:00");
   if (cycle === "yearly") {
@@ -301,13 +320,14 @@ function EntryForm({ onSave, dayMap, categories }) {
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
             <input
-              type="date"
+              type="date" lang="en-US"
               value={date}
               max={today()}
               onChange={(e) => setDate(e.target.value)}
               className="w-full bg-black/40 border border-zinc-800 rounded-lg pl-10 pr-4 py-3 text-white outline-none focus:border-violet-400/60"
             />
           </div>
+          <p className="text-xs text-zinc-500 mt-1.5">{formatDateLabel(date)}</p>
         </div>
 
         {/* Income vs Expense toggle */}
@@ -438,34 +458,82 @@ function SlipUpload({ onSave, categories }) {
   }, [categories, category]);
 
   const parseAmount = (text) => {
-    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+    const rawLines = text.split("\n").map((l) => l.trim());
+    const lines = rawLines.filter(Boolean);
 
-    // Pass 1: Look for "Amount" label followed by number
-    for (const line of lines) {
-      if (/amount/i.test(line)) {
-        const m = line.match(/([\d,]+\.?\d{0,2})/g);
-        if (m) {
-          const nums = m.map(s => parseFloat(s.replace(/,/g, "")));
-          const valid = nums.filter(n => !isNaN(n) && n >= 1);
-          if (valid.length) return Math.max(...valid);
+    // Helper: extract amount-shaped numbers (with optional decimals).
+    // Prefers numbers WITH decimals (likely currency) over numbers without.
+    const extractFromLine = (line) => {
+      // Skip lines that are clearly reference numbers / IDs / transaction codes
+      if (/ref|reference|trans(action)? id|biller|merchant|order|account|no\./i.test(line)) {
+        return null;
+      }
+      // Match numbers like 230.00 or 1,500.50 or 230 or 1,500
+      const matches = line.match(/[\d]{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?/g);
+      if (!matches) return null;
+      const nums = matches
+        .map(s => ({ raw: s, val: parseFloat(s.replace(/,/g, "")) }))
+        .filter(n => !isNaN(n.val) && n.val >= 1 && n.val < 10_000_000);
+      if (nums.length === 0) return null;
+      // Prefer ones with decimal points (real currency formatting)
+      const withDecimal = nums.filter(n => n.raw.includes("."));
+      if (withDecimal.length) return Math.max(...withDecimal.map(n => n.val));
+      return Math.max(...nums.map(n => n.val));
+    };
+
+    // Pass 1: "Amount" appears on a line — check that line AND the next 1-2 lines
+    // (Bangkok Bank format puts label and value on different lines)
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\s*(?:amount|total\s*amount|total)\s*:?\s*$/i.test(lines[i]) ||
+          /amount/i.test(lines[i])) {
+        // Check this line and next 2 for the value
+        for (let j = i; j < Math.min(i + 3, lines.length); j++) {
+          // Skip lines that mention reference/id/biller etc.
+          if (j > i && /ref|reference|trans(action)? id|biller|merchant|order|fee/i.test(lines[j])) continue;
+          const v = extractFromLine(lines[j]);
+          if (v !== null) return v;
         }
       }
     }
 
-    // Pass 2: number followed by Baht/THB/B
+    // Pass 2: number followed by Baht/THB/฿ — allowing optional space and case
     for (const line of lines) {
-      const m = line.match(/([\d,]+\.?\d{0,2})\s*(?:baht|thb|฿)/i);
+      const m = line.match(/([\d]{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\s*(?:baht|thb|฿)\b/i);
       if (m) {
         const num = parseFloat(m[1].replace(/,/g, ""));
-        if (num >= 1) return num;
+        if (num >= 1 && num < 10_000_000) return num;
       }
     }
 
-    // Pass 3: largest reasonable number
-    const allNums = (text.match(/[\d,]+\.?\d{0,2}/g) || [])
-      .map(n => parseFloat(n.replace(/,/g, "")))
-      .filter(n => !isNaN(n) && n >= 1 && n < 10_000_000);
-    if (allNums.length) return Math.max(...allNums);
+    // Pass 3: any number with currency symbol prefix (฿230 / THB 230)
+    for (const line of lines) {
+      const m = line.match(/(?:baht|thb|฿)\s*([\d]{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/i);
+      if (m) {
+        const num = parseFloat(m[1].replace(/,/g, ""));
+        if (num >= 1 && num < 10_000_000) return num;
+      }
+    }
+
+    // Pass 4: fallback — largest reasonable number, but EXCLUDE lines that look
+    // like reference/id/transaction lines, AND prefer numbers with decimal points
+    const candidates = [];
+    for (const line of lines) {
+      if (/ref|reference|trans(action)? id|biller|merchant|order|account|no\.|id\s*[:#]/i.test(line)) continue;
+      const matches = line.match(/[\d]{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?/g);
+      if (!matches) continue;
+      for (const m of matches) {
+        const val = parseFloat(m.replace(/,/g, ""));
+        // Cap at 1M for personal finance — anything larger is almost certainly a reference number
+        if (!isNaN(val) && val >= 1 && val < 1_000_000) {
+          candidates.push({ raw: m, val, hasDecimal: m.includes(".") });
+        }
+      }
+    }
+    if (candidates.length) {
+      const withDecimal = candidates.filter(c => c.hasDecimal);
+      if (withDecimal.length) return Math.max(...withDecimal.map(c => c.val));
+      return Math.max(...candidates.map(c => c.val));
+    }
 
     return null;
   };
@@ -578,13 +646,14 @@ function SlipUpload({ onSave, categories }) {
         <div className="relative">
           <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
           <input
-            type="date"
+            type="date" lang="en-US"
             value={date}
             max={today()}
             onChange={(e) => setDate(e.target.value)}
             className="w-full bg-black/40 border border-zinc-800 rounded-lg pl-10 pr-4 py-3 text-white outline-none focus:border-violet-400/60"
           />
         </div>
+        <p className="text-xs text-zinc-500 mt-1.5">{formatDateLabel(date)}</p>
       </div>
 
       {!kind && (
@@ -1520,12 +1589,13 @@ function SubForm({ initial, onSave, onCancel, existingId, categories }) {
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
             <input
-              type="date"
+              type="date" lang="en-US"
               value={nextRenewal}
               onChange={(e) => setNextRenewal(e.target.value)}
               className="w-full bg-black/40 border border-zinc-800 rounded-lg pl-10 pr-4 py-3 text-white outline-none focus:border-violet-400/60"
             />
           </div>
+          <p className="text-xs text-zinc-500 mt-1.5">{formatDateLabel(nextRenewal)}</p>
           <p className="text-xs text-zinc-500 mt-1">An expense will auto-create on this date, then advance to next cycle.</p>
         </div>
 
