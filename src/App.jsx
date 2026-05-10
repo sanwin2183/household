@@ -893,7 +893,11 @@ function Dashboard({ entries, transactions, subscriptions = [], categories }) {
       )}
 
       {/* Spending by category pie */}
-      {stats.pieData.length > 0 && (
+      {stats.pieData.length > 0 && (() => {
+        // Sort by value descending — render BOTH chart and legend from the same sorted array
+        // so colors line up. Using a copy via [...] to avoid mutating stats.pieData.
+        const sortedPie = [...stats.pieData].sort((a, b) => b.value - a.value);
+        return (
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
           <div className="mb-4">
             <h3 className="text-lg font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>Spending by Category</h3>
@@ -903,8 +907,8 @@ function Dashboard({ entries, transactions, subscriptions = [], categories }) {
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={stats.pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value">
-                    {stats.pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  <Pie data={sortedPie} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" isAnimationActive={false}>
+                    {sortedPie.map((d) => <Cell key={d.key} fill={d.color} />)}
                   </Pie>
                   <Tooltip
                     contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }}
@@ -914,27 +918,26 @@ function Dashboard({ entries, transactions, subscriptions = [], categories }) {
               </ResponsiveContainer>
             </div>
             <div className="space-y-2">
-              {stats.pieData
-                .sort((a, b) => b.value - a.value)
-                .map((d) => {
-                  const pct = stats.totalExpenses > 0 ? (d.value / stats.totalExpenses) * 100 : 0;
-                  return (
-                    <div key={d.key} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ background: d.color }} />
-                        <span className="text-zinc-300">{d.name}</span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-white font-medium">{fmtCompact(d.value)}</div>
-                        <div className="text-xs text-zinc-500">{pct.toFixed(1)}%</div>
-                      </div>
+              {sortedPie.map((d) => {
+                const pct = stats.totalExpenses > 0 ? (d.value / stats.totalExpenses) * 100 : 0;
+                return (
+                  <div key={d.key} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ background: d.color }} />
+                      <span className="text-zinc-300">{d.name}</span>
                     </div>
-                  );
-                })}
+                    <div className="text-right">
+                      <div className="text-white font-medium">{fmtCompact(d.value)}</div>
+                      <div className="text-xs text-zinc-500">{pct.toFixed(1)}%</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Cumulative net chart */}
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
