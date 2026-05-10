@@ -1140,22 +1140,25 @@ function Monthly({ entries, transactions, categories }) {
         <KpiCard label="Expenses" value={fmtCompact(selectedMonth.expenses)} sub="" accent="#f43f5e" icon={<TrendingDown className="w-4 h-4" />} />
       </div>
 
-      {monthPie.length > 0 && (
+      {monthPie.length > 0 && (() => {
+        // Sort once, render BOTH chart and legend from the same sorted array.
+        const sortedMonthPie = [...monthPie].sort((a, b) => b.value - a.value);
+        return (
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
           <h3 className="text-lg font-bold text-white mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>Categories — {monthLabel(selectedMonth.ym)}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={monthPie} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value">
-                    {monthPie.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  <Pie data={sortedMonthPie} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" isAnimationActive={false}>
+                    {sortedMonthPie.map((d) => <Cell key={d.key} fill={d.color} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }} formatter={(v) => fmt(v)} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
             <div className="space-y-2">
-              {monthPie.sort((a, b) => b.value - a.value).map(d => {
+              {sortedMonthPie.map(d => {
                 const pct = selectedMonth.expenses > 0 ? (d.value / selectedMonth.expenses) * 100 : 0;
                 return (
                   <div key={d.key} className="flex items-center justify-between text-sm">
@@ -1173,7 +1176,8 @@ function Monthly({ entries, transactions, categories }) {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h3 className="text-lg font-bold text-white mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>Daily Net</h3>
