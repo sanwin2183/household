@@ -818,6 +818,154 @@ function KpiCard({ label, value, sub, accent, icon }) {
 }
 
 // ---------- DASHBOARD ----------
+// ---------- CATEGORY PIE WITH DRILL ----------
+// Reusable pie chart that lets the user tap a slice to see all transactions
+// in that category. Used by Dashboard (all-time) and Monthly (single month).
+//
+// Props:
+//   title, subtitle: heading text
+//   pieData: array of { key, name, value, color } sorted or unsorted
+//   transactions: array of transactions ALREADY filtered to the scope
+//                 (e.g. all transactions for Dashboard, just this month for Monthly)
+//   totalForPct: denominator for percentage calculation (e.g. totalExpenses)
+function CategoryPieWithDrill({ title, subtitle, pieData, transactions, totalForPct }) {
+  const [selectedKey, setSelectedKey] = useState(null);
+  if (pieData.length === 0) return null;
+
+  // Sort by value descending — same order for chart and legend so colors line up.
+  const sortedPie = [...pieData].sort((a, b) => b.value - a.value);
+  const selected = selectedKey ? sortedPie.find((d) => d.key === selectedKey) : null;
+
+  const handleSelect = (key) => {
+    setSelectedKey((prev) => (prev === key ? null : key));
+  };
+
+  // Transactions for the selected category, most recent first
+  const drillTx = selected
+    ? transactions
+        .filter((t) => t.kind === "expense" && t.category === selected.key)
+        .sort((a, b) => {
+          if (b.date !== a.date) return b.date.localeCompare(a.date);
+          return (b.time || "").localeCompare(a.time || "");
+        })
+    : [];
+
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>{title}</h3>
+          {subtitle && <p className="text-xs text-zinc-500">{subtitle}</p>}
+        </div>
+        {selected && (
+          <button
+            onClick={() => setSelectedKey(null)}
+            className="text-xs text-zinc-400 hover:text-white flex items-center gap-1 px-2 py-1 rounded border border-zinc-800 hover:border-zinc-700"
+          >
+            <X className="w-3 h-3" /> Clear
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={sortedPie}
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={85}
+                dataKey="value"
+                isAnimationActive={false}
+                onClick={(slice) => slice && slice.key && handleSelect(slice.key)}
+                cursor="pointer"
+              >
+                {sortedPie.map((d) => (
+                  <Cell
+                    key={d.key}
+                    fill={d.color}
+                    stroke={selectedKey === d.key ? "#fff" : "transparent"}
+                    strokeWidth={selectedKey === d.key ? 2 : 0}
+                    fillOpacity={selectedKey && selectedKey !== d.key ? 0.35 : 1}
+                  />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }}
+                formatter={(v) => fmt(v)}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="space-y-2">
+          {sortedPie.map((d) => {
+            const pct = totalForPct > 0 ? (d.value / totalForPct) * 100 : 0;
+            const isSelected = selectedKey === d.key;
+            return (
+              <button
+                key={d.key}
+                onClick={() => handleSelect(d.key)}
+                className={`w-full flex items-center justify-between text-sm rounded-lg px-2 py-1.5 transition ${
+                  isSelected ? "bg-zinc-800/80" : "hover:bg-zinc-800/40"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: d.color }} />
+                  <span className={`${isSelected ? "text-white font-medium" : "text-zinc-300"} truncate`}>{d.name}</span>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="text-white font-medium">{fmtCompact(d.value)}</div>
+                  <div className="text-xs text-zinc-500">{pct.toFixed(1)}%</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Transaction drill-down */}
+      {selected && (
+        <div className="mt-5 pt-5 border-t border-zinc-800">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ background: selected.color }} />
+                <h4 className="text-base font-bold text-white">{selected.name}</h4>
+              </div>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {drillTx.length} transaction{drillTx.length === 1 ? "" : "s"} · {fmt(selected.value)} total
+              </p>
+            </div>
+          </div>
+          {drillTx.length === 0 ? (
+            <p className="text-sm text-zinc-500 text-center py-4">No transactions in this scope.</p>
+          ) : (
+            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+              {drillTx.map((t) => (
+                <div key={t.id} className="flex items-center justify-between bg-black/30 border border-zinc-800 rounded-lg px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-white font-medium truncate">{t.description || t.name || "—"}</div>
+                    <div className="text-xs text-zinc-500">
+                      {formatDateLabel(t.date)}{t.time ? ` · ${t.time}` : ""}
+                      {t.source === "subscription" && <span className="ml-1 text-violet-400">· Subscription</span>}
+                      {t.source === "slip" && <span className="ml-1 text-amber-400">· Slip</span>}
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-rose-400 tabular-nums flex-shrink-0 ml-3">
+                    {fmt(t.amount)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Dashboard({ entries, transactions, subscriptions = [], categories }) {
   const stats = useMemo(() => {
     const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
@@ -893,51 +1041,13 @@ function Dashboard({ entries, transactions, subscriptions = [], categories }) {
       )}
 
       {/* Spending by category pie */}
-      {stats.pieData.length > 0 && (() => {
-        // Sort by value descending — render BOTH chart and legend from the same sorted array
-        // so colors line up. Using a copy via [...] to avoid mutating stats.pieData.
-        const sortedPie = [...stats.pieData].sort((a, b) => b.value - a.value);
-        return (
-        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
-          <div className="mb-4">
-            <h3 className="text-lg font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>Spending by Category</h3>
-            <p className="text-xs text-zinc-500">All-time breakdown</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={sortedPie} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" isAnimationActive={false}>
-                    {sortedPie.map((d) => <Cell key={d.key} fill={d.color} />)}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }}
-                    formatter={(v) => fmt(v)}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-2">
-              {sortedPie.map((d) => {
-                const pct = stats.totalExpenses > 0 ? (d.value / stats.totalExpenses) * 100 : 0;
-                return (
-                  <div key={d.key} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ background: d.color }} />
-                      <span className="text-zinc-300">{d.name}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-white font-medium">{fmtCompact(d.value)}</div>
-                      <div className="text-xs text-zinc-500">{pct.toFixed(1)}%</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-        );
-      })()}
+      <CategoryPieWithDrill
+        title="Spending by Category"
+        subtitle="All-time breakdown"
+        pieData={stats.pieData}
+        transactions={transactions}
+        totalForPct={stats.totalExpenses}
+      />
 
       {/* Cumulative net chart */}
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
@@ -1140,44 +1250,13 @@ function Monthly({ entries, transactions, categories }) {
         <KpiCard label="Expenses" value={fmtCompact(selectedMonth.expenses)} sub="" accent="#f43f5e" icon={<TrendingDown className="w-4 h-4" />} />
       </div>
 
-      {monthPie.length > 0 && (() => {
-        // Sort once, render BOTH chart and legend from the same sorted array.
-        const sortedMonthPie = [...monthPie].sort((a, b) => b.value - a.value);
-        return (
-        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
-          <h3 className="text-lg font-bold text-white mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>Categories — {monthLabel(selectedMonth.ym)}</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={sortedMonthPie} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" isAnimationActive={false}>
-                    {sortedMonthPie.map((d) => <Cell key={d.key} fill={d.color} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }} formatter={(v) => fmt(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-2">
-              {sortedMonthPie.map(d => {
-                const pct = selectedMonth.expenses > 0 ? (d.value / selectedMonth.expenses) * 100 : 0;
-                return (
-                  <div key={d.key} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ background: d.color }} />
-                      <span className="text-zinc-300">{d.name}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-white font-medium">{fmtCompact(d.value)}</div>
-                      <div className="text-xs text-zinc-500">{pct.toFixed(1)}%</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-        );
-      })()}
+      <CategoryPieWithDrill
+        title={`Categories — ${monthLabel(selectedMonth.ym)}`}
+        subtitle={null}
+        pieData={monthPie}
+        transactions={monthTxs}
+        totalForPct={selectedMonth.expenses}
+      />
 
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h3 className="text-lg font-bold text-white mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>Daily Net</h3>
