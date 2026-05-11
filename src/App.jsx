@@ -892,10 +892,6 @@ function CategoryPieWithDrill({ title, subtitle, pieData, transactions, totalFor
                   />
                 ))}
               </Pie>
-              <Tooltip
-                contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }}
-                formatter={(v) => fmt(v)}
-              />
             </PieChart>
           </ResponsiveContainer>
         </div>
