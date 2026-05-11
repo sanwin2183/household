@@ -574,6 +574,9 @@ function SlipUpload({ onSave, categories }) {
   const updateAmount = (idx, val) => {
     setResults((prev) => prev.map((r, i) => (i === idx ? { ...r, amount: val } : r)));
   };
+  const updateDescription = (idx, val) => {
+    setResults((prev) => prev.map((r, i) => (i === idx ? { ...r, description: val } : r)));
+  };
   const removeResult = (idx) => setResults((prev) => prev.filter((_, i) => i !== idx));
 
   const reset = () => {
@@ -610,7 +613,7 @@ function SlipUpload({ onSave, categories }) {
           amount: r.amount,
           kind,
           category: kind === "income" ? "income" : category,
-          description: "",
+          description: (r.description || "").trim(),
           partner,
           source: "slip",
           timestamp: new Date().toISOString(),
@@ -734,9 +737,9 @@ function SlipUpload({ onSave, categories }) {
               <div className="space-y-3">
                 {results.map((r, idx) => (
                   <div key={idx} className="bg-black/40 border border-zinc-800 rounded-xl p-3">
-                    <div className="flex gap-3 items-center">
+                    <div className="flex gap-3 items-start">
                       <img src={r.fileUrl} alt="slip" className="w-14 h-14 object-cover rounded-lg border border-zinc-800 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 space-y-2">
                         {r.error && <p className="text-xs text-rose-400">Could not read — enter manually</p>}
                         <div className="flex items-center gap-2">
                           <input
@@ -750,8 +753,15 @@ function SlipUpload({ onSave, categories }) {
                           />
                           <span className="text-xs text-zinc-500">{CURRENCY_SYMBOL}</span>
                         </div>
+                        <input
+                          type="text"
+                          value={r.description || ""}
+                          onChange={(e) => updateDescription(idx, e.target.value)}
+                          placeholder="Description (optional)"
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-white text-sm outline-none focus:border-violet-400/60"
+                        />
                       </div>
-                      <button onClick={() => removeResult(idx)} className="text-zinc-500 hover:text-rose-400">
+                      <button onClick={() => removeResult(idx)} className="text-zinc-500 hover:text-rose-400 flex-shrink-0">
                         <X className="w-5 h-5" />
                       </button>
                     </div>
@@ -818,6 +828,97 @@ function KpiCard({ label, value, sub, accent, icon }) {
 }
 
 // ---------- DASHBOARD ----------
+function DrillTxRow({ tx, onSaveTransaction }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(tx.description || "");
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = () => {
+    setDraft(tx.description || "");
+    setEditing(true);
+  };
+  const cancel = () => {
+    setEditing(false);
+  };
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSaveTransaction({ ...tx, description: draft.trim() });
+      setEditing(false);
+    } catch (e) {
+      console.error(e);
+      alert("Save failed: " + e.message);
+    }
+    setSaving(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="bg-black/40 border border-violet-400/40 rounded-lg px-3 py-2.5 space-y-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Description"
+          autoFocus
+          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-white text-sm outline-none focus:border-violet-400/60"
+        />
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-zinc-500">
+            {formatDateLabel(tx.date)}{tx.time ? ` · ${tx.time}` : ""}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={cancel}
+              disabled={saving}
+              className="text-xs text-zinc-400 hover:text-white px-2 py-1"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={saving}
+              className="text-xs font-medium px-3 py-1 rounded text-black disabled:opacity-50"
+              style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)" }}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between bg-black/30 border border-zinc-800 rounded-lg px-3 py-2.5 hover:border-zinc-700 transition">
+      <div className="min-w-0 flex-1">
+        <div className={`text-sm font-medium truncate ${tx.description ? "text-white" : "text-zinc-500 italic"}`}>
+          {tx.description || tx.name || "No description"}
+        </div>
+        <div className="text-xs text-zinc-500">
+          {formatDateLabel(tx.date)}{tx.time ? ` · ${tx.time}` : ""}
+          {tx.source === "subscription" && <span className="ml-1 text-violet-400">· Subscription</span>}
+          {tx.source === "slip" && <span className="ml-1 text-amber-400">· Slip</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+        <div className="text-sm font-semibold text-rose-400 tabular-nums">
+          {fmt(tx.amount)}
+        </div>
+        {onSaveTransaction && (
+          <button
+            onClick={startEdit}
+            className="text-zinc-500 hover:text-violet-300 p-1"
+            title="Edit description"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------- CATEGORY PIE WITH DRILL ----------
 // Reusable pie chart that lets the user tap a slice to see all transactions
 // in that category. Used by Dashboard (all-time) and Monthly (single month).
@@ -828,7 +929,7 @@ function KpiCard({ label, value, sub, accent, icon }) {
 //   transactions: array of transactions ALREADY filtered to the scope
 //                 (e.g. all transactions for Dashboard, just this month for Monthly)
 //   totalForPct: denominator for percentage calculation (e.g. totalExpenses)
-function CategoryPieWithDrill({ title, subtitle, pieData, transactions, totalForPct }) {
+function CategoryPieWithDrill({ title, subtitle, pieData, transactions, totalForPct, onSaveTransaction }) {
   const [selectedKey, setSelectedKey] = useState(null);
   if (pieData.length === 0) return null;
 
@@ -940,19 +1041,7 @@ function CategoryPieWithDrill({ title, subtitle, pieData, transactions, totalFor
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
               {drillTx.map((t) => (
-                <div key={t.id} className="flex items-center justify-between bg-black/30 border border-zinc-800 rounded-lg px-3 py-2.5">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm text-white font-medium truncate">{t.description || t.name || "—"}</div>
-                    <div className="text-xs text-zinc-500">
-                      {formatDateLabel(t.date)}{t.time ? ` · ${t.time}` : ""}
-                      {t.source === "subscription" && <span className="ml-1 text-violet-400">· Subscription</span>}
-                      {t.source === "slip" && <span className="ml-1 text-amber-400">· Slip</span>}
-                    </div>
-                  </div>
-                  <div className="text-sm font-semibold text-rose-400 tabular-nums flex-shrink-0 ml-3">
-                    {fmt(t.amount)}
-                  </div>
-                </div>
+                <DrillTxRow key={t.id} tx={t} onSaveTransaction={onSaveTransaction} />
               ))}
             </div>
           )}
@@ -962,7 +1051,7 @@ function CategoryPieWithDrill({ title, subtitle, pieData, transactions, totalFor
   );
 }
 
-function Dashboard({ entries, transactions, subscriptions = [], categories }) {
+function Dashboard({ entries, transactions, subscriptions = [], categories, onSaveTransaction }) {
   const stats = useMemo(() => {
     const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
     const totalIncome = entries.reduce((s, e) => s + e.income, 0);
@@ -1043,6 +1132,7 @@ function Dashboard({ entries, transactions, subscriptions = [], categories }) {
         pieData={stats.pieData}
         transactions={transactions}
         totalForPct={stats.totalExpenses}
+        onSaveTransaction={onSaveTransaction}
       />
 
       {/* Cumulative net chart */}
@@ -1173,7 +1263,7 @@ function History({ entries, onDeleteTransaction, categories }) {
 }
 
 // ---------- MONTHLY ----------
-function Monthly({ entries, transactions, categories }) {
+function Monthly({ entries, transactions, categories, onSaveTransaction }) {
   const months = useMemo(() => {
     const map = {};
     entries.forEach(e => {
@@ -1252,6 +1342,7 @@ function Monthly({ entries, transactions, categories }) {
         pieData={monthPie}
         transactions={monthTxs}
         totalForPct={selectedMonth.expenses}
+        onSaveTransaction={onSaveTransaction}
       />
 
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
@@ -2275,8 +2366,8 @@ export default function App() {
               onMarkUnsubscribed={markUnsubscribed}
               onReactivate={reactivateSubscription}
             />}
-            {tab === "dashboard" && <Dashboard entries={entries} transactions={transactions} subscriptions={subscriptions} categories={categories} />}
-            {tab === "monthly" && <Monthly entries={entries} transactions={transactions} categories={categories} />}
+            {tab === "dashboard" && <Dashboard entries={entries} transactions={transactions} subscriptions={subscriptions} categories={categories} onSaveTransaction={saveTransaction} />}
+            {tab === "monthly" && <Monthly entries={entries} transactions={transactions} categories={categories} onSaveTransaction={saveTransaction} />}
             {tab === "history" && <History entries={entries} onDeleteTransaction={deleteTransaction} categories={categories} />}
             {tab === "settings" && <Settings
               entries={entries}
