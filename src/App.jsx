@@ -180,19 +180,64 @@ function PasscodeScreen({ onUnlock }) {
   const [error, setError] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
-  const handleSubmit = async () => {
+  // Lockout state — persisted to localStorage so reloading doesn't bypass
+  const [attempts, setAttempts] = useState(() => {
+    return parseInt(localStorage.getItem("household:attempts") || "0", 10);
+  });
+  const [lockedUntil, setLockedUntil] = useState(() => {
+    return parseInt(localStorage.getItem("household:lockedUntil") || "0", 10);
+  });
+  const [now, setNow] = useState(Date.now());
+
+  // Tick every second while locked, so the countdown updates
+  useEffect(() => {
+    if (lockedUntil <= now) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [lockedUntil, now]);
+
+  // Detect mobile-sized viewport for keypad vs text-input layout
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const isLocked = lockedUntil > now;
+  const secondsLeft = isLocked ? Math.ceil((lockedUntil - now) / 1000) : 0;
+  const minLeft = Math.floor(secondsLeft / 60);
+  const secLeft = secondsLeft % 60;
+
+  const handleSubmit = async (codeOverride) => {
+    const codeToCheck = (codeOverride !== undefined ? codeOverride : code);
+    if (isLocked || loading || !codeToCheck) return;
     setLoading(true);
     setError("");
     try {
       const snap = await getDoc(CONFIG_DOC);
       const correct = snap.exists() ? snap.data().passcode : DEFAULT_PASSCODE;
       if (!snap.exists()) await setDoc(CONFIG_DOC, { passcode: DEFAULT_PASSCODE });
-      if (code === correct) {
+      if (codeToCheck === correct) {
+        // Success — clear lockout state
+        localStorage.removeItem("household:attempts");
+        localStorage.removeItem("household:lockedUntil");
         sessionStorage.setItem("household:unlocked", "1");
         onUnlock();
       } else {
-        setError("Incorrect passcode");
+        const nextAttempts = attempts + 1;
+        setAttempts(nextAttempts);
+        localStorage.setItem("household:attempts", String(nextAttempts));
+        if (nextAttempts >= 3) {
+          const until = Date.now() + 15 * 60 * 1000; // 15 min lockout
+          setLockedUntil(until);
+          localStorage.setItem("household:lockedUntil", String(until));
+          setError("Too many wrong attempts. Locked for 15 minutes.");
+        } else {
+          setError(`Incorrect passcode (${3 - nextAttempts} attempt${nextAttempts === 2 ? "" : "s"} left)`);
+        }
         setCode("");
       }
     } catch (e) {
@@ -201,10 +246,34 @@ function PasscodeScreen({ onUnlock }) {
     setLoading(false);
   };
 
+  // Auto-submit when keypad reaches 6 digits (typical phone passcode length)
+  // Skip auto-submit on shorter or longer passcodes — user must tap Unlock
+  const onKeypadDigit = (digit) => {
+    if (isLocked || loading) return;
+    if (code.length >= 12) return; // cap at 12 digits
+    const next = code + digit;
+    setCode(next);
+    setError("");
+    // Auto-submit at 6 digits
+    if (next.length === 6) {
+      handleSubmit(next);
+    }
+  };
+  const onKeypadDelete = () => {
+    if (isLocked || loading) return;
+    setCode((c) => c.slice(0, -1));
+    setError("");
+  };
+  const onKeypadClear = () => {
+    if (isLocked || loading) return;
+    setCode("");
+    setError("");
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "radial-gradient(ellipse at top, #2a1f3e 0%, #0a0d14 60%)" }}>
+    <div className="min-h-screen flex items-center justify-center px-6 py-8" style={{ background: "radial-gradient(ellipse at top, #2a1f3e 0%, #0a0d14 60%)" }}>
       <div className="w-full max-w-md">
-        <div className="text-center mb-10">
+        <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-6">
             <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)" }}>
               <Home className="w-6 h-6 text-black" strokeWidth={2.5} />
@@ -216,34 +285,111 @@ function PasscodeScreen({ onUnlock }) {
           <p className="text-sm text-zinc-500 tracking-[0.3em] uppercase">Personal Ledger</p>
         </div>
 
-        <div className="bg-zinc-900/60 backdrop-blur-xl border border-zinc-800 rounded-2xl p-8 shadow-2xl">
+        <div className="bg-zinc-900/60 backdrop-blur-xl border border-zinc-800 rounded-2xl p-6 md:p-8 shadow-2xl">
           <div className="flex items-center gap-3 mb-6">
             <Lock className="w-4 h-4 text-violet-400" />
             <span className="text-sm font-medium text-zinc-300 tracking-wide">Family Access</span>
           </div>
-          <div className="relative">
-            <input
-              type={show ? "text" : "password"}
-              value={code}
-              onChange={(e) => { setCode(e.target.value); setError(""); }}
-              onKeyDown={(e) => e.key === "Enter" && !loading && handleSubmit()}
-              placeholder="Enter passcode"
-              className="w-full bg-black/40 border border-zinc-800 focus:border-violet-400/60 rounded-xl px-4 py-4 text-white text-lg tracking-widest outline-none transition-colors"
-              autoFocus
-            />
-            <button onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
-              {show ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-          </div>
-          {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="w-full mt-6 py-4 rounded-xl font-semibold text-black transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
-            style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)" }}
-          >
-            {loading ? "Connecting…" : "Unlock"}
-          </button>
+
+          {isMobile ? (
+            // ====== MOBILE: KEYPAD ======
+            <>
+              {/* Digit dots — show how many digits typed so far */}
+              <div className="flex justify-center gap-3 mb-6 h-3">
+                {Array.from({ length: Math.max(6, code.length) }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-3 h-3 rounded-full transition-all ${
+                      i < code.length ? "bg-violet-400" : "border border-zinc-700"
+                    }`}
+                  />
+                ))}
+              </div>
+
+              {/* Keypad grid */}
+              <div className="grid grid-cols-3 gap-3">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => onKeypadDigit(String(n))}
+                    disabled={isLocked || loading}
+                    className="aspect-square rounded-full bg-zinc-800/60 hover:bg-zinc-800 active:bg-zinc-700 border border-zinc-700/50 text-white text-2xl font-medium transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    {n}
+                  </button>
+                ))}
+                <button
+                  onClick={onKeypadClear}
+                  disabled={isLocked || loading || code.length === 0}
+                  className="aspect-square rounded-full text-zinc-400 hover:text-white text-xs font-medium transition disabled:opacity-30"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={() => onKeypadDigit("0")}
+                  disabled={isLocked || loading}
+                  className="aspect-square rounded-full bg-zinc-800/60 hover:bg-zinc-800 active:bg-zinc-700 border border-zinc-700/50 text-white text-2xl font-medium transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  0
+                </button>
+                <button
+                  onClick={onKeypadDelete}
+                  disabled={isLocked || loading || code.length === 0}
+                  className="aspect-square rounded-full text-zinc-400 hover:text-white flex items-center justify-center transition disabled:opacity-30"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* For non-6-digit passcodes, show Unlock button */}
+              {code.length > 0 && code.length !== 6 && !isLocked && (
+                <button
+                  onClick={() => handleSubmit()}
+                  disabled={loading}
+                  className="w-full mt-4 py-3 rounded-xl font-semibold text-black transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)" }}
+                >
+                  {loading ? "Checking…" : "Unlock"}
+                </button>
+              )}
+            </>
+          ) : (
+            // ====== DESKTOP: TEXT INPUT ======
+            <>
+              <div className="relative">
+                <input
+                  type={show ? "text" : "password"}
+                  value={code}
+                  onChange={(e) => { setCode(e.target.value); setError(""); }}
+                  onKeyDown={(e) => e.key === "Enter" && !loading && !isLocked && handleSubmit()}
+                  placeholder="Enter passcode"
+                  disabled={isLocked || loading}
+                  className="w-full bg-black/40 border border-zinc-800 focus:border-violet-400/60 rounded-xl px-4 py-4 text-white text-lg tracking-widest outline-none transition-colors disabled:opacity-50"
+                  autoFocus
+                />
+                <button onClick={() => setShow(!show)} disabled={isLocked} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 disabled:opacity-30">
+                  {show ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+              <button
+                onClick={() => handleSubmit()}
+                disabled={loading || isLocked}
+                className="w-full mt-6 py-4 rounded-xl font-semibold text-black transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)" }}
+              >
+                {loading ? "Connecting…" : "Unlock"}
+              </button>
+            </>
+          )}
+
+          {/* Lockout message takes priority over per-attempt error */}
+          {isLocked ? (
+            <p className="text-amber-400 text-sm text-center mt-4">
+              Locked. Try again in {minLeft}:{String(secLeft).padStart(2, "0")}
+            </p>
+          ) : error ? (
+            <p className="text-red-400 text-sm text-center mt-4">{error}</p>
+          ) : null}
         </div>
       </div>
     </div>
