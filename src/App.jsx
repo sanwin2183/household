@@ -470,7 +470,7 @@ function EntryForm({ onSave, dayMap, categories }) {
               value={date}
               max={today()}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-black/40 border border-zinc-800 rounded-lg pl-10 pr-4 py-3 text-white outline-none focus:border-violet-400/60"
+              className="block w-full min-w-0 box-border appearance-none bg-black/40 border border-zinc-800 rounded-lg pl-10 pr-3 py-3 text-sm text-white outline-none focus:border-violet-400/60"
             />
           </div>
           <p className="text-xs text-zinc-500 mt-1.5">{formatDateLabel(date)}</p>
@@ -799,7 +799,7 @@ function SlipUpload({ onSave, categories }) {
             value={date}
             max={today()}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full bg-black/40 border border-zinc-800 rounded-lg pl-10 pr-4 py-3 text-white outline-none focus:border-violet-400/60"
+            className="block w-full min-w-0 box-border appearance-none bg-black/40 border border-zinc-800 rounded-lg pl-10 pr-3 py-3 text-sm text-white outline-none focus:border-violet-400/60"
           />
         </div>
         <p className="text-xs text-zinc-500 mt-1.5">{formatDateLabel(date)}</p>
@@ -1911,7 +1911,7 @@ function SubForm({ initial, onSave, onCancel, existingId, categories }) {
               type="date" lang="en-US"
               value={nextRenewal}
               onChange={(e) => setNextRenewal(e.target.value)}
-              className="w-full bg-black/40 border border-zinc-800 rounded-lg pl-10 pr-4 py-3 text-white outline-none focus:border-violet-400/60"
+              className="block w-full min-w-0 box-border appearance-none bg-black/40 border border-zinc-800 rounded-lg pl-10 pr-3 py-3 text-sm text-white outline-none focus:border-violet-400/60"
             />
           </div>
           <p className="text-xs text-zinc-500 mt-1.5">{formatDateLabel(nextRenewal)}</p>

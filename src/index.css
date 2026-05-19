@@ -13,3 +13,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
   opacity: 0.6;
 }
+
+/* iOS Safari renders the date value with its own sizing that overflows
+   narrow containers. Force it to align left and respect the box width. */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+}
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+input[type="date"]::-webkit-datetime-edit {
+  padding: 0;
+}
