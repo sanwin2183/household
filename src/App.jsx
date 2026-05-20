@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import InstallPrompt from "./InstallPrompt";
 import {
   TrendingUp, TrendingDown, Wallet, Lock, LogOut, Plus, Calendar, BarChart3, FileText, Trash2, Eye, EyeOff, Sparkles, Download, Wifi, WifiOff, CalendarDays, ChevronLeft, ChevronRight, Upload, Image as ImageIcon, Loader2, X, ArrowDownCircle, ArrowUpCircle,
   UtensilsCrossed, Car, Lightbulb, ShoppingBag, Film, MoreHorizontal, Home, Repeat, AlertCircle, Pencil, CheckCircle2,
@@ -2252,6 +2253,7 @@ export default function App() {
   const [categories, setCategories] = useState([]);
   const [categoriesSeeded, setCategoriesSeeded] = useState(false);
   const [tab, setTab] = useState("entry");
+  const [moreOpen, setMoreOpen] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [loading, setLoading] = useState(true);
   const [autoCreateRan, setAutoCreateRan] = useState(false);
@@ -2473,7 +2475,7 @@ export default function App() {
             </button>
           </div>
         </div>
-        <div className="max-w-6xl mx-auto px-4 md:px-6 flex gap-1 overflow-x-auto">
+        <div className="hidden sm:flex max-w-6xl mx-auto px-4 md:px-6 gap-1 overflow-x-auto">
           {[
             { id: "entry", label: "Entry", icon: <Plus className="w-4 h-4" /> },
             { id: "upload", label: "Slips", icon: <Upload className="w-4 h-4" /> },
@@ -2497,7 +2499,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-20">
+      <main className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-28 sm:pb-20">
         {loading ? (
           <div className="text-center py-20 text-zinc-500">Connecting…</div>
         ) : (
@@ -2530,6 +2532,74 @@ export default function App() {
           Household · Real-time sync · THB
         </footer>
       </main>
+
+      {/* MOBILE ONLY: fixed bottom navigation bar */}
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-black/80 backdrop-blur-xl border-t border-zinc-800" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div className="grid grid-cols-5">
+          {[
+            { id: "entry", label: "Entry", icon: <Plus className="w-4 h-4" /> },
+            { id: "upload", label: "Slips", icon: <Upload className="w-4 h-4" /> },
+            { id: "dashboard", label: "Dashboard", icon: <BarChart3 className="w-4 h-4" /> },
+            { id: "history", label: "History", icon: <FileText className="w-4 h-4" /> },
+          ].map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => { setTab(t.id); setMoreOpen(false); }}
+                className={`flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition ${active ? "text-violet-300" : "text-zinc-500"}`}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setMoreOpen((v) => !v)}
+            className={`flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition ${(["subs","monthly","settings"].includes(tab) || moreOpen) ? "text-violet-300" : "text-zinc-500"}`}
+          >
+            <MoreHorizontal className="w-4 h-4" />
+            More
+          </button>
+        </div>
+      </nav>
+
+      {/* MOBILE ONLY: "More" bottom sheet */}
+      {moreOpen && (
+        <div className="sm:hidden fixed inset-0 z-50" onClick={() => setMoreOpen(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="absolute bottom-0 inset-x-0 bg-zinc-900 border-t border-zinc-800 rounded-t-2xl p-4" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold text-zinc-300">More</div>
+              <button onClick={() => setMoreOpen(false)} className="text-zinc-500 hover:text-white p-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-1">
+              {[
+                { id: "subs", label: "Subscriptions", icon: <Repeat className="w-4 h-4" /> },
+                { id: "monthly", label: "Monthly", icon: <CalendarDays className="w-4 h-4" /> },
+                { id: "settings", label: "Settings", icon: <Lock className="w-4 h-4" /> },
+              ].map((t) => {
+                const active = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => { setTab(t.id); setMoreOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition ${active ? "bg-violet-400/15 text-violet-200" : "text-zinc-300 hover:bg-zinc-800"}`}
+                  >
+                    {t.icon}
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PWA install prompt (subtle, dismissible, 30-day snooze) */}
+      <InstallPrompt />
     </div>
   );
 }
