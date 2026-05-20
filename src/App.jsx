@@ -2499,7 +2499,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-28 sm:pb-20">
+      <main className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-32 sm:pb-20">
         {loading ? (
           <div className="text-center py-20 text-zinc-500">Connecting…</div>
         ) : (
@@ -2534,32 +2534,32 @@ export default function App() {
       </main>
 
       {/* MOBILE ONLY: fixed bottom navigation bar */}
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-black/80 backdrop-blur-xl border-t border-zinc-800" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="grid grid-cols-5">
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div className="grid grid-cols-5 px-1 pt-2 pb-1">
           {[
-            { id: "entry", label: "Entry", icon: <Plus className="w-4 h-4" /> },
-            { id: "upload", label: "Slips", icon: <Upload className="w-4 h-4" /> },
-            { id: "dashboard", label: "Dashboard", icon: <BarChart3 className="w-4 h-4" /> },
-            { id: "history", label: "History", icon: <FileText className="w-4 h-4" /> },
+            { id: "entry", label: "Entry", icon: <Plus className="w-6 h-6" strokeWidth={2} /> },
+            { id: "upload", label: "Slips", icon: <Upload className="w-6 h-6" strokeWidth={2} /> },
+            { id: "dashboard", label: "Dashboard", icon: <BarChart3 className="w-6 h-6" strokeWidth={2} /> },
+            { id: "history", label: "History", icon: <FileText className="w-6 h-6" strokeWidth={2} /> },
           ].map((t) => {
             const active = tab === t.id;
             return (
               <button
                 key={t.id}
                 onClick={() => { setTab(t.id); setMoreOpen(false); }}
-                className={`flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition ${active ? "text-violet-300" : "text-zinc-500"}`}
+                className={`flex flex-col items-center justify-center gap-1 py-1.5 rounded-lg transition active:scale-95 ${active ? "text-violet-400" : "text-zinc-500"}`}
               >
                 {t.icon}
-                {t.label}
+                <span className="text-[11px] font-medium leading-none">{t.label}</span>
               </button>
             );
           })}
           <button
             onClick={() => setMoreOpen((v) => !v)}
-            className={`flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition ${(["subs","monthly","settings"].includes(tab) || moreOpen) ? "text-violet-300" : "text-zinc-500"}`}
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 rounded-lg transition active:scale-95 ${(["subs","monthly","settings"].includes(tab) || moreOpen) ? "text-violet-400" : "text-zinc-500"}`}
           >
-            <MoreHorizontal className="w-4 h-4" />
-            More
+            <MoreHorizontal className="w-6 h-6" strokeWidth={2} />
+            <span className="text-[11px] font-medium leading-none">More</span>
           </button>
         </div>
       </nav>
@@ -2577,16 +2577,16 @@ export default function App() {
             </div>
             <div className="space-y-1">
               {[
-                { id: "subs", label: "Subscriptions", icon: <Repeat className="w-4 h-4" /> },
-                { id: "monthly", label: "Monthly", icon: <CalendarDays className="w-4 h-4" /> },
-                { id: "settings", label: "Settings", icon: <Lock className="w-4 h-4" /> },
+                { id: "subs", label: "Subscriptions", icon: <Repeat className="w-5 h-5" /> },
+                { id: "monthly", label: "Monthly", icon: <CalendarDays className="w-5 h-5" /> },
+                { id: "settings", label: "Settings", icon: <Lock className="w-5 h-5" /> },
               ].map((t) => {
                 const active = tab === t.id;
                 return (
                   <button
                     key={t.id}
                     onClick={() => { setTab(t.id); setMoreOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition ${active ? "bg-violet-400/15 text-violet-200" : "text-zinc-300 hover:bg-zinc-800"}`}
+                    className={`w-full flex items-center gap-3 px-4 py-4 rounded-xl text-base font-medium transition ${active ? "bg-violet-400/15 text-violet-200" : "text-zinc-300 hover:bg-zinc-800"}`}
                   >
                     {t.icon}
                     {t.label}
