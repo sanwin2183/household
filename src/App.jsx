@@ -295,9 +295,9 @@ function PasscodeScreen({ onUnlock }) {
           {isMobile ? (
             // ====== MOBILE: KEYPAD ======
             <>
-              {/* Digit dots — show how many digits typed so far */}
+              {/* Digit dots — fixed 6 dots; extra digits beyond 6 just keep the last dot filled (no layout shift) */}
               <div className="flex justify-center gap-3 mb-6 h-3">
-                {Array.from({ length: Math.max(6, code.length) }).map((_, i) => (
+                {Array.from({ length: 6 }).map((_, i) => (
                   <div
                     key={i}
                     className={`w-3 h-3 rounded-full transition-all ${
@@ -342,17 +342,24 @@ function PasscodeScreen({ onUnlock }) {
                 </button>
               </div>
 
-              {/* For non-6-digit passcodes, show Unlock button */}
-              {code.length > 0 && code.length !== 6 && !isLocked && (
-                <button
-                  onClick={() => handleSubmit()}
-                  disabled={loading}
-                  className="w-full mt-4 py-3 rounded-xl font-semibold text-black transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)" }}
-                >
-                  {loading ? "Checking…" : "Unlock"}
-                </button>
-              )}
+              {/* Unlock button — always rendered to reserve space; visible only for non-6-digit codes when something is typed */}
+              {(() => {
+                const visible = code.length > 0 && code.length !== 6 && !isLocked;
+                return (
+                  <button
+                    onClick={() => visible && handleSubmit()}
+                    disabled={loading || !visible}
+                    aria-hidden={!visible}
+                    tabIndex={visible ? 0 : -1}
+                    className={`w-full mt-4 py-3 rounded-xl font-semibold text-black transition-opacity duration-200 hover:opacity-90 active:scale-[0.98] disabled:opacity-50 ${
+                      visible ? "opacity-100" : "opacity-0 pointer-events-none"
+                    }`}
+                    style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)" }}
+                  >
+                    {loading ? "Checking…" : "Unlock"}
+                  </button>
+                );
+              })()}
             </>
           ) : (
             // ====== DESKTOP: TEXT INPUT ======
